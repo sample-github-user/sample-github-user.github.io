@@ -1,7 +1,7 @@
 languageCode = "en-us"
 defaultContentLanguage = "en-us"
-title = "Blog"
-copyright = "© 2020 Blog"
+title = "Sample Blog"
+copyright = "© 2020 Sample Blog"
 
 # Provide this id to enable Google Analytics
 # googleAnalytics = "UA-xxxxxxxxx-x"
