@@ -1,0 +1,88 @@
+name: Publishing
+
+on: [push]
+
+jobs:
+
+  publish:
+
+    runs-on: ubuntu-latest
+
+    env:
+      HUGO_DOWNLOAD_LINK: https://github.com/gohugoio/hugo/releases/download/v0.65.3/hugo_0.65.3_Linux-64bit.deb  
+      THEME_DOWNLOAD_LINK: https://github.com/kongdivin/hugo-theme-okayish-blog/archive/v1.0.4.tar.gz
+
+    steps:
+
+    - uses: actions/checkout@v2
+    
+    - name: Install Hugo
+      run: |
+        wget -O /tmp/hugo.deb "$HUGO_DOWNLOAD_LINK"
+        sudo apt-get install -fy /tmp/hugo.deb
+
+    - name: Prepare theme
+      run: |
+        LINK_MD5=`echo $THEME_DOWNLOAD_LINK | md5sum | cut -f1 -d" "`
+        test ! -f ./.cache/$LINK_MD5 && 
+        { rm -rf ./.cache/* && mkdir -p ./.cache/themes &&
+        wget -O /tmp/theme.tar.gz "$THEME_DOWNLOAD_LINK" &&
+        mkdir /tmp/themes && tar -xf /tmp/theme.tar.gz -C /tmp/themes && 
+        mv /tmp/themes/* ./.cache/themes/my-theme ;} || echo "Skipped downloading theme"
+        touch ./.cache/$LINK_MD5
+
+    - name: Configure Git
+      run: |
+        git config user.email "octocat@github.com"
+        git config user.name "The Octocat"
+    
+    - name: Create master branch if not exists
+      run: |
+        git checkout --orphan master &&
+        git reset --hard &&
+        git commit --allow-empty -m "Initialize master branch" &&
+        git push -f origin master &&
+        git checkout draft ||
+        echo "Skipped creating master branch"
+    
+    - name: Check out master branch into public
+      run: |
+        rm -rf public
+        git worktree add -B master public origin/master
+    
+    - name: Define BASE_URL
+      run: |
+        test -f ./public/CNAME && 
+        CNAME="$(cat ./public/CNAME)" ||
+        { OWNER="$(echo $GITHUB_REPOSITORY | cut -d '/' -f 1)" &&
+        REPO="$(echo $GITHUB_REPOSITORY | cut -d '/' -f 2)" &&
+        { [[ "$OWNER.github.io" = "$REPO" ]] && BASE=$REPO || BASE=$OWNER.github.io/$REPO ;} ;}
+        [[ -z "$CNAME" ]] && BASE_URL=https://$BASE || BASE_URL=https://$CNAME
+        echo "Base URL: $BASE_URL"
+        sed -i "1i baseURL='$BASE_URL'" config.toml
+    
+    - name: Backup CNAME
+      run: test -f ./public/CNAME && cp ./public/CNAME /tmp/ || echo "Skipped"
+
+    - name: Build site
+      run: |
+        rm -rf public/*
+        hugo --minify --themesDir ./.cache/themes --theme my-theme
+
+    - name: Restore CNAME
+      run: test -f /tmp/CNAME && cp /tmp/CNAME ./public/ || echo "Skipped"
+    
+    - name: Cache theme
+      run: |
+        git add .cache &&
+        git commit -m "Cache theme" &&
+        git push ||
+        echo "Skipped caching theme"
+    
+    - name: Publish site
+      run: |
+        cd public
+        touch _DELETE_ME_TO_TRIGGER_FIRST_DEPLOYMENT
+        git add --all
+        git commit --allow-empty -m "Publish site"
+        git push
